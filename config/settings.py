@@ -31,6 +31,10 @@ SECRET_KEY = os.environ['SECRET_KEY']
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost 127.0.0.1 .vercel.app').split()
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://*.vercel.app http://localhost:5173 http://127.0.0.1:5173 http://localhost:3000'
+).split()
 
 
 # Application definition
@@ -217,7 +221,14 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:5175',
     'http://127.0.0.1:5176',      # ← Y ESTA
 ]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r'^https://.*\.vercel\.app$',
+]
 CORS_ALLOW_CREDENTIALS = True
+
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
 
 # ---------------------------------------------------------------------------
 # Anthropic
