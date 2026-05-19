@@ -14,3 +14,10 @@ from django.core.wsgi import get_wsgi_application
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
 
 application = get_wsgi_application()
+
+try:
+    from common.bootstrap import bootstrap_vercel_sqlite
+
+    bootstrap_vercel_sqlite()
+except Exception:
+    pass

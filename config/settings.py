@@ -115,9 +115,9 @@ USE_SQLITE = DEBUG or os.environ.get('USE_SQLITE', 'False') == 'True'
 
 if USE_SQLITE:
     sqlite_db_path = BASE_DIR / 'db.sqlite3'
-    if os.environ.get('VERCEL') and sqlite_db_path.exists():
+    if os.environ.get('VERCEL'):
         writable_db_path = Path('/tmp/db.sqlite3')
-        if not writable_db_path.exists():
+        if sqlite_db_path.exists() and not writable_db_path.exists():
             shutil.copyfile(sqlite_db_path, writable_db_path)
         sqlite_db_path = writable_db_path
 
