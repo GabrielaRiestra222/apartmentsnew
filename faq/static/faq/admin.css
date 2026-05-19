@@ -1,0 +1,42 @@
+.change-form .faq-admin-text,
+.change-form .faq-admin-textarea,
+.inline-group .faq-admin-text,
+.inline-group .faq-admin-textarea {
+  box-sizing: border-box;
+  width: clamp(18rem, 68vw, 56rem);
+  max-width: 100%;
+  font-size: clamp(0.875rem, 0.3vw + 0.78rem, 1rem);
+  line-height: 1.45;
+}
+
+.change-form .faq-admin-textarea,
+.inline-group .faq-admin-textarea {
+  min-height: clamp(7rem, 18vw, 14rem);
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.inline-group .faq-admin-text,
+.inline-group .faq-admin-textarea {
+  width: clamp(14rem, 42vw, 34rem);
+}
+
+.inline-group .tabular td,
+.inline-group .tabular th {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.inline-group .tabular textarea,
+.inline-group .tabular input[type="text"] {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  .change-form .faq-admin-text,
+  .change-form .faq-admin-textarea,
+  .inline-group .faq-admin-text,
+  .inline-group .faq-admin-textarea {
+    width: 100%;
+  }
+}
