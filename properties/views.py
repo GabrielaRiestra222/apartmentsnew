@@ -1,10 +1,10 @@
+import base64
 import uuid
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
-from django.core.files.storage import default_storage
 
 from common.permissions import IsAuthenticatedOrReadOnlyForProperties
 from .models import Property, Amenity, PropertyImage
@@ -111,11 +111,10 @@ def handle_property_image_upload(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    encoded = base64.b64encode(file.read()).decode('ascii')
+    data_url = f'data:{file.content_type};base64,{encoded}'
+
     ext = file.name.split('.')[-1]
     filename = f"{uuid.uuid4()}.{ext}"
-    folder = f'properties/property_{property_id}' if property_id else 'properties/temp'
-    filepath = f'{folder}/{filename}'
-    saved_path = default_storage.save(filepath, file)
-    url = request.build_absolute_uri(default_storage.url(saved_path))
 
-    return Response({'url': url, 'filename': filename, 'path': saved_path}, status=status.HTTP_201_CREATED)
+    return Response({'url': data_url, 'filename': filename, 'path': filename}, status=status.HTTP_201_CREATED)
