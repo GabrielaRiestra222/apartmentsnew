@@ -5,7 +5,7 @@ from django.db import OperationalError, ProgrammingError
 
 
 def bootstrap_vercel_sqlite():
-    if os.environ.get('VERCEL') != '1':
+    if not os.environ.get('VERCEL'):
         return
     if os.environ.get('USE_SQLITE', 'False') != 'True':
         return
@@ -38,6 +38,12 @@ def ensure_default_admin():
             'role': 'ADMIN',
         },
     )
-    if created:
+    if created or os.environ.get('SYNC_DEFAULT_ADMIN_PASSWORD', 'True') == 'True':
         user.set_password(password)
-        user.save(update_fields=['password'])
+        if not user.is_active:
+            user.is_active = True
+        if not user.is_staff:
+            user.is_staff = True
+        if not user.is_superuser:
+            user.is_superuser = True
+        user.save(update_fields=['password', 'is_active', 'is_staff', 'is_superuser'])
