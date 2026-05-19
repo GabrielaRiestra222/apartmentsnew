@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import shutil
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -106,11 +107,20 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # LOCAL  (DEBUG=True)  → SQLite, zero config needed
 # PRODUCTION (DEBUG=False) → PostgreSQL via env variables
 # ---------------------------------------------------------------------------
-if DEBUG:
+USE_SQLITE = DEBUG or os.environ.get('USE_SQLITE', 'False') == 'True'
+
+if USE_SQLITE:
+    sqlite_db_path = BASE_DIR / 'db.sqlite3'
+    if os.environ.get('VERCEL') and sqlite_db_path.exists():
+        writable_db_path = Path('/tmp/db.sqlite3')
+        if not writable_db_path.exists():
+            shutil.copyfile(sqlite_db_path, writable_db_path)
+        sqlite_db_path = writable_db_path
+
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'NAME': sqlite_db_path,
         }
     }
 else:
