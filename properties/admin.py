@@ -15,10 +15,11 @@ class PropertyImageInline(admin.TabularInline):
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display = ('title', 'organization', 'price_per_night', 'is_active', 'is_published')
+    list_display = ('title', 'organization', 'owner', 'price_per_night', 'is_active', 'is_published')
     list_filter = ('is_active', 'is_published', 'organization')
     search_fields = ('title', 'location')
     filter_horizontal = ('amenities',)
+    autocomplete_fields = ('owner',)
     inlines = [PropertyImageInline]
 
     def get_queryset(self, request):

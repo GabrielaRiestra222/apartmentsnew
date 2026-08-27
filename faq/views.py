@@ -1,5 +1,6 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.db.models import Prefetch
 from .models import FAQCategory, FAQ
 from .serializers import FAQCategorySerializer, FAQSerializer
 
@@ -25,5 +26,5 @@ class PublicFAQViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return FAQCategory.objects.prefetch_related(
-            'faqs'
+            Prefetch('faqs', queryset=FAQ.objects.filter(is_published=True).order_by('order'))
         ).filter(faqs__is_published=True).distinct().order_by('order')

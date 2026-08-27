@@ -1,13 +1,15 @@
 from django.contrib import admin
-from django.urls import path, include
+from django.urls import path, include, re_path
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.static import serve
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 
 # Core existing apps
 from organizations.views import OrganizationViewSet
 from users.views import UserViewSet
+from users.auth import RoleTokenObtainPairView
 from properties.views import (
     PropertyViewSet, PublicPropertyViewSet,
     AmenityViewSet, PropertyImageViewSet,
@@ -83,10 +85,18 @@ urlpatterns = [
     path('api/', include(chatbot_urlpatterns)),
     path('api/', include('integrations.urls')),
     path('api/properties/', include('properties.urls')),
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/', RoleTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+elif getattr(settings, 'USE_SQLITE', False):
+    urlpatterns += [
+        re_path(
+            r'^media/(?P<path>.*)$',
+            serve,
+            {'document_root': settings.MEDIA_ROOT},
+        ),
+    ]

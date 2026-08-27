@@ -12,8 +12,11 @@ class BookingAdmin(admin.ModelAdmin):
         'total_price',
         'display_total_paid',
         'display_remaining_balance',
-        'status'
+        'status',
+        'deposit_amount',
+        'deposit_returned',
     )
+    list_filter = ('status', 'deposit_returned')
 
     readonly_fields = (
         'display_total_paid',

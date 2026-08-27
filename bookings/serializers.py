@@ -19,8 +19,18 @@ class BookingSerializer(serializers.ModelSerializer):
 
     # Derived read-only fields
     apartment_title = serializers.CharField(source='apartment.title', read_only=True)
+    apartment_image = serializers.SerializerMethodField()
     client_name = serializers.SerializerMethodField()
     agency_name = serializers.CharField(source='agency.name', read_only=True, default=None)
+
+    def get_apartment_image(self, obj):
+        if not obj.apartment_id:
+            return None
+        images = list(obj.apartment.images.all())
+        if not images:
+            return None
+        main = next((img for img in images if img.is_main), images[0])
+        return main.image or None
 
     def get_client_name(self, obj):
         """Return name from related Client if linked, otherwise from the stored field."""
@@ -42,17 +52,19 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = Booking
         fields = (
-            'id', 'apartment', 'apartment_title',
+            'id', 'apartment', 'apartment_title', 'apartment_image',
             'client', 'client_id', 'client_name', 'client_email', 'client_phone',
             'source', 'agency', 'agency_name',
             'check_in', 'check_out', 'total_price', 'status',
             'notes', 'num_guests', 'created_at',
             'total_paid', 'remaining_balance', 'payments',
             'pending_payments_count', 'price_per_night',
+            'deposit_amount', 'deposit_returned', 'deposit_returned_at',
         )
         read_only_fields = (
-            'created_at', 'client_id', 'apartment_title', 'agency_name',
+            'created_at', 'client_id', 'apartment_title', 'apartment_image', 'agency_name',
             'pending_payments_count', 'price_per_night',
+            'deposit_returned', 'deposit_returned_at',
         )
 
     def validate(self, attrs):

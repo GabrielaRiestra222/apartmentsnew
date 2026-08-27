@@ -62,6 +62,13 @@ class Booking(models.Model):
     notes = models.TextField(blank=True)
     num_guests = models.PositiveIntegerField(default=1)
 
+    # Security deposit ("fianza") collected at check-in, returned after check-out
+    # once the property has been inspected. Tracked separately from rent payments
+    # since it isn't revenue — it's money owed back to the guest.
+    deposit_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    deposit_returned = models.BooleanField(default=False)
+    deposit_returned_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     # -----------------------------

@@ -1,5 +1,6 @@
 import uuid
 import builtins
+from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
 
@@ -48,6 +49,14 @@ class Property(models.Model):
         on_delete=models.CASCADE,
         related_name='properties'
     )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='owned_properties',
+        help_text='Owner-role user who should only see this property in the CRM.',
+    )
 
     title = models.CharField(max_length=255)
     slug = models.SlugField(unique=True, blank=True)
@@ -89,9 +98,25 @@ class Property(models.Model):
         ordering = ['title']
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.title)
+        should_refresh_slug = not self.slug
+        if self.pk:
+            original = Property.objects.filter(pk=self.pk).only('title', 'slug').first()
+            if original and original.title != self.title:
+                original_slug = slugify(original.title) or 'property'
+                should_refresh_slug = not self.slug or self.slug == original_slug
+
+        if should_refresh_slug:
+            self.slug = self._unique_slug()
         super().save(*args, **kwargs)
+
+    def _unique_slug(self):
+        base_slug = slugify(self.title) or 'property'
+        slug = base_slug
+        counter = 2
+        while Property.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+            slug = f'{base_slug}-{counter}'
+            counter += 1
+        return slug
 
     def __str__(self):
         return self.title

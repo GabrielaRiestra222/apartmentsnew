@@ -21,6 +21,13 @@ db.sqlite3
 media/
 staticfiles/
 
+# Frontend local artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Local discarded generated files
+.discarded/
+
 # IDEs
 .vscode/
 .idea/

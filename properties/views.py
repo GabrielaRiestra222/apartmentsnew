@@ -1,42 +1,30 @@
-import base64
 import uuid
+from django.core.files.storage import default_storage
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from common.permissions import IsAuthenticatedOrReadOnlyForProperties
+from common.permissions import IsAuthenticatedOrReadOnlyForProperties, OwnerScopedQuerysetMixin
 from .models import Property, Amenity, PropertyImage
 from .serializers import PropertySerializer, PublicPropertySerializer, AmenitySerializer, PropertyImageSerializer
 
 
-class PropertyViewSet(viewsets.ModelViewSet):
+class PropertyViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = (
         Property.objects
-        .select_related('organization')
+        .select_related('organization', 'owner')
         .prefetch_related('bookings', 'images', 'amenities')
         .order_by('title')
     )
     serializer_class = PropertySerializer
     permission_classes = [IsAuthenticatedOrReadOnlyForProperties]
+    owner_lookup = 'owner'
 
     def perform_create(self, serializer):
         """Auto-assign organization from logged-in user."""
-        print("=" * 50)
-        print(f"DEBUG perform_create")
-        print(f"User: {self.request.user}")
-        print(f"User ID: {self.request.user.id}")
-        print(f"Organization: {self.request.user.organization}")
-        print(f"Validated data: {serializer.validated_data}")
-        print("=" * 50)
-        
-        try:
-            serializer.save(organization=self.request.user.organization)
-            print("✅ Property created successfully")
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            raise
+        serializer.save(organization=self.request.user.organization)
 
     def perform_update(self, serializer):
         """Keep organization when updating."""
@@ -65,7 +53,7 @@ class PublicPropertyViewSet(
     """Read-only, unauthenticated — only published properties."""
     queryset = (
         Property.objects
-        .filter(is_published=True)
+        .filter(is_published=True, is_active=True)
         .prefetch_related('images', 'amenities')
         .order_by('title')
     )
@@ -111,10 +99,10 @@ def handle_property_image_upload(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    encoded = base64.b64encode(file.read()).decode('ascii')
-    data_url = f'data:{file.content_type};base64,{encoded}'
-
     ext = file.name.split('.')[-1]
     filename = f"{uuid.uuid4()}.{ext}"
+    folder = f"properties/property_{property_id}" if property_id else "properties/temp"
+    path = default_storage.save(f"{folder}/{filename}", file)
+    url = default_storage.url(path)
 
-    return Response({'url': data_url, 'filename': filename, 'path': filename}, status=status.HTTP_201_CREATED)
+    return Response({'url': url, 'filename': filename, 'path': path}, status=status.HTTP_201_CREATED)
