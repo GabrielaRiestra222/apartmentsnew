@@ -23,12 +23,27 @@ class PropertyViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     owner_lookup = 'owner'
 
     def perform_create(self, serializer):
-        """Auto-assign organization from logged-in user."""
-        serializer.save(organization=self.request.user.organization)
+        """
+        Auto-assign organization from the logged-in user. Admins/superusers
+        commonly have no organization of their own (they manage everything),
+        so fall back to the first organization on record rather than trying
+        to insert a NULL into a NOT NULL column.
+        """
+        organization = self.request.user.organization
+        if organization is None:
+            from organizations.models import Organization
+            organization = Organization.objects.order_by('id').first()
+        serializer.save(organization=organization)
 
     def perform_update(self, serializer):
-        """Keep organization when updating."""
-        serializer.save(organization=self.request.user.organization)
+        """
+        Leave organization untouched on update. It used to be overwritten
+        with the editing user's own organization on every save — for any
+        user without one (e.g. an admin), that meant NULL, which violates
+        the NOT NULL constraint and made every property edit fail with a
+        500 as soon as the user saved.
+        """
+        serializer.save()
 
     @action(detail=False, methods=['post'], url_path='upload-image', permission_classes=[IsAuthenticated])
     def upload_image(self, request):
