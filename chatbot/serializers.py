@@ -13,3 +13,13 @@ class ChatMessageInputSerializer(serializers.Serializer):
     session_id = serializers.UUIDField(required=False, allow_null=True)
     message = serializers.CharField(max_length=2000)
     property_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class ChatHistoryTurnSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=['user', 'assistant'])
+    content = serializers.CharField()
+
+
+class AdminChatMessageInputSerializer(serializers.Serializer):
+    message = serializers.CharField(max_length=2000)
+    history = ChatHistoryTurnSerializer(many=True, required=False, default=list)

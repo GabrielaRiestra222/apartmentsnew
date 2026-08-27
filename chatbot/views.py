@@ -1,14 +1,18 @@
+from datetime import date, timedelta
+
 import anthropic
 from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework import status
 
 from .models import ChatSession
-from .serializers import ChatMessageInputSerializer
+from .serializers import AdminChatMessageInputSerializer, ChatMessageInputSerializer
 from faq.models import FAQ
+from integrations.models import InboxMessage
 from properties.models import Property
+from bookings.models import Booking
 
 
 class ChatbotMessageView(APIView):
@@ -32,6 +36,15 @@ class ChatbotMessageView(APIView):
             )
         else:
             session = ChatSession.objects.create(property_id=property_id)
+
+        InboxMessage.objects.create(
+            channel='DIRECT',
+            direction='INBOUND',
+            sender=str(session.session_id),
+            recipient='web',
+            body=user_message,
+            external_id=f'chat-{session.session_id}-{len(session.messages)}-in',
+        )
 
         # --- Build context: property info ---
         property_info = ''
@@ -79,6 +92,16 @@ class ChatbotMessageView(APIView):
         )
         reply = ai_response.content[0].text
 
+        InboxMessage.objects.create(
+            channel='DIRECT',
+            direction='OUTBOUND',
+            sender='assistant',
+            recipient=str(session.session_id),
+            body=reply,
+            external_id=f'chat-{session.session_id}-{len(session.messages)}-out',
+            is_read=True,
+        )
+
         # --- Persist messages to session ---
         messages = list(session.messages)
         messages.append({'role': 'user', 'content': user_message})
@@ -90,6 +113,75 @@ class ChatbotMessageView(APIView):
             'reply': reply,  # Cambiado de 'response' a 'reply'
             'session_id': str(session.session_id),
         })
+
+
+class AdminChatbotMessageView(APIView):
+    """Internal assistant for CRM staff — has access to real bookings/properties."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = AdminChatMessageInputSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        user_message = data['message']
+        history = data.get('history', [])
+
+        org = request.user.organization
+        properties_qs = Property.objects.all() if org is None else Property.objects.filter(organization=org)
+        properties = properties_qs.order_by('title')
+
+        today = date.today()
+        upcoming_cutoff = today + timedelta(days=90)
+        bookings_qs = Booking.objects.all() if org is None else Booking.objects.filter(apartment__organization=org)
+        bookings = (
+            bookings_qs
+            .filter(check_out__gte=today - timedelta(days=30), check_in__lte=upcoming_cutoff)
+            .select_related('apartment', 'client')
+            .order_by('check_in')[:50]
+        )
+
+        properties_info = '\n'.join(
+            f"- [{p.id}] {p.title} | {p.location} | {p.price_per_night}€/noche | "
+            f"{'publicada' if p.is_published else 'borrador'} | {'activa' if p.is_active else 'inactiva'}"
+            for p in properties
+        ) or 'No hay propiedades registradas.'
+
+        bookings_info = '\n'.join(
+            f"- Reserva #{b.id} | {b.apartment.title} | "
+            f"{b.client_name or (b.client.first_name + ' ' + b.client.last_name if b.client else 'sin cliente')} | "
+            f"{b.check_in} → {b.check_out} | estado: {b.status} | "
+            f"total: {b.total_price}€ | pagado: {b.total_paid}€ | pendiente: {b.remaining_balance}€"
+            for b in bookings
+        ) or 'No hay reservas en los últimos 30 días ni próximos 90 días.'
+
+        system_prompt = (
+            "You are the internal assistant for the staff of a vacation rental management company, "
+            "used inside their private admin CRM. You are talking to a staff member, not a guest — "
+            "you DO have access to their real booking and property data below, so use it directly "
+            "instead of telling them to contact support or log into an admin panel (they already are).\n"
+            "Always answer in the same language the user writes in. Be concise and concrete. "
+            "Never invent bookings, prices or availability not listed below.\n\n"
+            f"ORGANIZATION: {org.name if org else 'all organizations (staff has no org assigned)'}\n\n"
+            f"PROPERTIES:\n{properties_info}\n\n"
+            f"BOOKINGS (last 30 days + next 90 days):\n{bookings_info}"
+        )
+
+        messages = [{'role': turn['role'], 'content': turn['content']} for turn in history]
+        messages.append({'role': 'user', 'content': user_message})
+
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        ai_response = client.messages.create(
+            model='claude-haiku-4-5-20251001',
+            max_tokens=700,
+            system=system_prompt,
+            messages=messages,
+        )
+        reply = ai_response.content[0].text
+
+        return Response({'reply': reply})
 
 
 # Alias so both import names work
