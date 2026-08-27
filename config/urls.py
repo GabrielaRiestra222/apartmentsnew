@@ -40,7 +40,7 @@ from integrations.views import (
 )
 
 # Stand-alone views
-from common.views import DashboardStatsView
+from common.views import DashboardStatsView, SystemBootstrapView
 from chatbot.urls import urlpatterns as chatbot_urlpatterns
 
 router = DefaultRouter()
@@ -88,6 +88,7 @@ urlpatterns = [
     path('api/token/', RoleTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/dashboard/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
+    path('api/system/bootstrap/', SystemBootstrapView.as_view(), name='system-bootstrap'),
 ]
 
 if settings.DEBUG:

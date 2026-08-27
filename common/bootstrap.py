@@ -18,6 +18,17 @@ def bootstrap_vercel_sqlite():
         return
 
 
+def run_migrations_and_sync_admin():
+    """
+    Explicit, on-demand equivalent of bootstrap_vercel_sqlite() for a real
+    (non-SQLite) database — e.g. Postgres on Vercel, where there's no shell
+    to run `manage.py migrate` after a deploy. Triggered only via the
+    token-protected /api/system/bootstrap/ endpoint, never automatically.
+    """
+    call_command('migrate', interactive=False, verbosity=0)
+    ensure_default_admin()
+
+
 def ensure_default_admin():
     username = os.environ.get('DEFAULT_ADMIN_USERNAME')
     password = os.environ.get('DEFAULT_ADMIN_PASSWORD')

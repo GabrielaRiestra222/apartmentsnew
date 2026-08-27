@@ -1,9 +1,10 @@
 import calendar as cal
+import os
 from datetime import date
 from decimal import Decimal
 
 from django.db.models import Sum
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -119,3 +120,27 @@ class DashboardStatsView(APIView):
             'open_maintenance': open_maintenance,
             'occupancy_rate_percent': occupancy_rate,
         })
+
+
+class SystemBootstrapView(APIView):
+    """
+    Runs pending migrations and syncs the default admin account against
+    whatever database is configured (Postgres in production). There is no
+    shell access on Vercel's serverless runtime, so this is the only way to
+    apply migrations after a deploy — it only runs when the caller presents
+    BOOTSTRAP_TOKEN via the X-Bootstrap-Token header, and does nothing if
+    that env var isn't set (so it's inert until deliberately configured).
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        expected_token = os.environ.get('BOOTSTRAP_TOKEN')
+        provided_token = request.headers.get('X-Bootstrap-Token')
+
+        if not expected_token or provided_token != expected_token:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        from common.bootstrap import run_migrations_and_sync_admin
+
+        run_migrations_and_sync_admin()
+        return Response({'status': 'ok'})
