@@ -32,20 +32,29 @@ def run_migrations_and_sync_admin():
 
 def ensure_qa_user():
     """
-    Temporary, disposable superuser for verifying a deploy end-to-end
-    (auth, DB writes, media upload) without ever knowing the real admin
-    credentials. Only created when QA_VERIFY_USERNAME/PASSWORD are set —
-    remove those env vars (and delete the user) once verification is done.
+    Disposable superuser for verifying a deploy end-to-end (auth, DB
+    writes, media upload) without ever knowing the real admin credentials.
+    Inert unless QA_VERIFY_USERNAME/PASSWORD are set. If QA_VERIFY_DELETE
+    is also set, delete that user instead of creating/syncing it — use
+    this to clean up after verification.
     """
     username = os.environ.get('QA_VERIFY_USERNAME')
     password = os.environ.get('QA_VERIFY_PASSWORD')
 
-    if not username or not password:
+    if not username:
         return
 
     from django.contrib.auth import get_user_model
 
     User = get_user_model()
+
+    if os.environ.get('QA_VERIFY_DELETE', 'False') == 'True':
+        User.objects.filter(username=username).delete()
+        return
+
+    if not password:
+        return
+
     user, _ = User.objects.get_or_create(
         username=username,
         defaults={'is_staff': True, 'is_superuser': True, 'role': 'ADMIN'},

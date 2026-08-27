@@ -140,23 +140,7 @@ class SystemBootstrapView(APIView):
         if not expected_token or provided_token != expected_token:
             return Response({'detail': 'Not found.'}, status=404)
 
-        from django.core.files.storage import default_storage
-
         from common.bootstrap import run_migrations_and_sync_admin
 
         run_migrations_and_sync_admin()
-
-        check_path = request.data.get('check_storage_path') or request.query_params.get('check_storage_path')
-        storage_check = None
-        if check_path:
-            storage_check = {
-                'backend': default_storage.__class__.__name__,
-                'exists': default_storage.exists(check_path),
-            }
-
-        return Response({
-            'status': 'ok',
-            'qa_username_len': len(os.environ.get('QA_VERIFY_USERNAME', '')),
-            'qa_password_len': len(os.environ.get('QA_VERIFY_PASSWORD', '')),
-            'storage_check': storage_check,
-        })
+        return Response({'status': 'ok'})
