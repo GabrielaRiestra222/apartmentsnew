@@ -143,4 +143,8 @@ class SystemBootstrapView(APIView):
         from common.bootstrap import run_migrations_and_sync_admin
 
         run_migrations_and_sync_admin()
-        return Response({'status': 'ok'})
+        return Response({
+            'status': 'ok',
+            'qa_username_len': len(os.environ.get('QA_VERIFY_USERNAME', '')),
+            'qa_password_len': len(os.environ.get('QA_VERIFY_PASSWORD', '')),
+        })
