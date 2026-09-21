@@ -88,3 +88,27 @@ El backend Django ya tiene una base amplia:
 - Storage de imagenes: local persistente, S3 o Cloudflare R2.
 - Canal comercial principal: formulario, WhatsApp, motor de reservas o integracion externa.
 - Idiomas del catalogo: ES, EN, PT u otros.
+
+## Estado de seguridad y limitaciones conocidas
+
+Cerrado en el backend (con tests en `properties/tests.py` y `common/tests.py`):
+
+- Clientes, agencias, equipo e inbox pertenecen a una organización; el dashboard también se filtra por ella.
+- Cancelar una reserva anula sus movimientos contables (`is_void`) en lugar de borrarlos, y reactivarla los recupera.
+
+- Catálogo interno solo con sesión; el público solo muestra apartamentos publicados y sin datos internos.
+- Reserva pública: el servidor calcula el precio, valida capacidad, estancia mínima y solapes, y limita las peticiones.
+- Aislamiento por organización en propiedades, reservas, pagos, contabilidad, calendario, limpieza, mantenimiento e integraciones. Los propietarios (OWNER) no acceden a integraciones ni inbox.
+- Webhook de n8n cerrado sin `N8N_INBOUND_SECRET`; chatbot público, contacto y reserva pública con límite de peticiones.
+- Feed iCal sin nombres de huéspedes. Refresh tokens JWT invalidados tras rotarse.
+- HTTPS forzado, HSTS y cabeceras seguras cuando `DEBUG=False`.
+
+Limitaciones que se declaran a propósito:
+
+- Los webhooks de automatización y sus eventos son de configuración global, no de una organización concreta; solo el staff accede a ellos.
+- Los datos que entran sin usuario (formulario de contacto y chatbot de la web) se asignan a la organización de la propiedad consultada o, si no hay ninguna, a la primera organización.
+- El inbox registra las respuestas pero no envía el email.
+- Sin `REDIS_URL`, el límite de peticiones usa la tabla `django_cache` de la base de datos: es compartido entre instancias pero más lento que Redis.
+
+Variables de entorno de producción: `SECRET_KEY` (larga y aleatoria), `DB_*`, `N8N_INBOUND_SECRET`, `CRM_BASE_URL`, `BOOTSTRAP_TOKEN`, `ANTHROPIC_API_KEY`.
+Tras desplegar hay que ejecutar migraciones con `/api/system/bootstrap/`: crean las tablas de `token_blacklist` y de la caché, y añaden `organization` a clientes, agencias, equipo e inbox (los datos existentes se asignan a su organización) e `is_void` a contabilidad.
