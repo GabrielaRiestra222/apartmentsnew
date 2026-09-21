@@ -56,6 +56,13 @@ class InboxMessage(models.Model):
     CHANNEL_CHOICES = ChannelConnection.CHANNEL_CHOICES + [('WHATSAPP', 'WhatsApp'), ('TELEGRAM', 'Telegram'), ('EMAIL', 'Email')]
     DIRECTION_CHOICES = [('INBOUND', 'Inbound'), ('OUTBOUND', 'Outbound')]
 
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='inbox_messages',
+    )
     booking = models.ForeignKey('bookings.Booking', on_delete=models.SET_NULL, null=True, blank=True, related_name='messages')
     client = models.ForeignKey('clients.Client', on_delete=models.SET_NULL, null=True, blank=True, related_name='messages')
     channel = models.CharField(max_length=30, choices=CHANNEL_CHOICES)

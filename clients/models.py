@@ -5,6 +5,13 @@ class Client(models.Model):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     email = models.EmailField()
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='clients',
+    )
     phone = models.CharField(max_length=20, blank=True)
     document_id = models.CharField(max_length=50, blank=True)
     nationality = models.CharField(max_length=100, blank=True)

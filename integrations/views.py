@@ -1,15 +1,18 @@
+import hmac
 import json
-from datetime import timedelta
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
+from django.conf import settings
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from bookings.models import Booking
+from common.throttles import ContactRateThrottle, PublicBookingRateThrottle
+from common.permissions import IsStaffRole, OwnerScopedQuerysetMixin
 from property_calendar.models import CalendarBlock
 from properties.models import Property
 from .models import (
@@ -27,6 +30,7 @@ from .serializers import (
     AutomationEventSerializer,
     AutomationWebhookSerializer,
     ChannelConnectionSerializer,
+    ContactRequestSerializer,
     DynamicPricingRuleSerializer,
     GuestCheckInSerializer,
     InboxMessageSerializer,
@@ -37,10 +41,12 @@ from .serializers import (
 )
 
 
-class ChannelConnectionViewSet(viewsets.ModelViewSet):
+class ChannelConnectionViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = ChannelConnection.objects.select_related('property').order_by('property__title', 'channel')
     serializer_class = ChannelConnectionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'property__organization'
+    organization_check = 'property.organization_id'
 
     @action(detail=True, methods=['post'], url_path='sync-ical')
     def sync_ical(self, request, pk=None):
@@ -56,52 +62,65 @@ class ChannelConnectionViewSet(viewsets.ModelViewSet):
         return Response({'imported': imported})
 
 
-class SeasonalRateViewSet(viewsets.ModelViewSet):
+class SeasonalRateViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = SeasonalRate.objects.select_related('property').order_by('start_date')
     serializer_class = SeasonalRateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'property__organization'
+    organization_check = 'property.organization_id'
 
 
-class InboxMessageViewSet(viewsets.ModelViewSet):
+class InboxMessageViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = InboxMessage.objects.select_related('booking', 'booking__apartment', 'client').order_by('-created_at')
     serializer_class = InboxMessageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'organization'
+    assign_organization = True
 
 
-class GuestCheckInViewSet(viewsets.ModelViewSet):
+class GuestCheckInViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = GuestCheckIn.objects.select_related('booking').order_by('-created_at')
     serializer_class = GuestCheckInSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'booking__apartment__organization'
+    organization_check = 'booking.apartment.organization_id'
 
 
-class SmartLockCodeViewSet(viewsets.ModelViewSet):
+class SmartLockCodeViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = SmartLockCode.objects.select_related('property', 'booking').order_by('-created_at')
     serializer_class = SmartLockCodeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'property__organization'
+    organization_check = 'property.organization_id'
 
 
-class DynamicPricingRuleViewSet(viewsets.ModelViewSet):
+class DynamicPricingRuleViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = DynamicPricingRule.objects.select_related('property').order_by('property__title', 'name')
     serializer_class = DynamicPricingRuleSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'property__organization'
+    organization_check = 'property.organization_id'
 
 
-class PaymentIntentViewSet(viewsets.ModelViewSet):
+class PaymentIntentViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = PaymentIntent.objects.select_related('booking').order_by('-created_at')
     serializer_class = PaymentIntentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
+    organization_lookup = 'booking__apartment__organization'
+    organization_check = 'booking.apartment.organization_id'
 
     def perform_create(self, serializer):
+        self._check_organization(serializer)
         intent = serializer.save()
         if not intent.checkout_url:
-            intent.checkout_url = f'http://127.0.0.1:5174/payments?booking={intent.booking_id}&amount={intent.amount}'
+            intent.checkout_url = f'{settings.CRM_BASE_URL}/payments?booking={intent.booking_id}&amount={intent.amount}'
             intent.save(update_fields=['checkout_url'])
 
 
 class AutomationWebhookViewSet(viewsets.ModelViewSet):
     queryset = AutomationWebhook.objects.order_by('event', 'name')
     serializer_class = AutomationWebhookSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
 
     @action(detail=True, methods=['post'], url_path='test')
     def test(self, request, pk=None):
@@ -113,11 +132,12 @@ class AutomationWebhookViewSet(viewsets.ModelViewSet):
 class AutomationEventViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AutomationEvent.objects.select_related('webhook').order_by('-created_at')
     serializer_class = AutomationEventSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsStaffRole]
 
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([PublicBookingRateThrottle])
 def public_booking(request):
     serializer = PublicBookingSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -137,7 +157,7 @@ def public_booking(request):
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def property_ical_export(request, pk):
-    property_obj = Property.objects.get(pk=pk)
+    property_obj = get_object_or_404(Property, pk=pk, is_active=True)
     lines = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -150,7 +170,7 @@ def property_ical_export(request, pk):
             f'UID:booking-{booking.id}@apartments-pms',
             f'DTSTART;VALUE=DATE:{booking.check_in.strftime("%Y%m%d")}',
             f'DTEND;VALUE=DATE:{booking.check_out.strftime("%Y%m%d")}',
-            f'SUMMARY:Reserved - {booking.client_name or "Guest"}',
+            'SUMMARY:Reserved',
             'END:VEVENT',
         ])
     blocks = property_obj.calendar_blocks.all()
@@ -169,7 +189,22 @@ def property_ical_export(request, pk):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([ContactRateThrottle])
+def public_contact(request):
+    serializer = ContactRequestSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response({'ok': True}, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
 def n8n_inbound(request):
+    # Sin secreto configurado el endpoint queda cerrado; con él, solo entra quien lo conozca.
+    expected = getattr(settings, 'N8N_INBOUND_SECRET', '')
+    received = request.headers.get('X-Apartments-Secret', '')
+    if not expected or not hmac.compare_digest(received, expected):
+        return Response({'detail': 'Forbidden.'}, status=status.HTTP_403_FORBIDDEN)
     event = request.data.get('event', 'CUSTOM')
     payload = request.data.get('payload', request.data)
     AutomationEvent.objects.create(event=event, payload=payload, status='RECEIVED')

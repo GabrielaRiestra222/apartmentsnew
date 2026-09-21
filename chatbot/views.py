@@ -9,6 +9,8 @@ from rest_framework import status
 
 from .models import ChatSession
 from .serializers import AdminChatMessageInputSerializer, ChatMessageInputSerializer
+from common.tenancy import default_organization
+from common.throttles import PublicChatRateThrottle
 from faq.models import FAQ
 from integrations.models import InboxMessage
 from properties.models import Property
@@ -17,6 +19,7 @@ from bookings.models import Booking
 
 class ChatbotMessageView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [PublicChatRateThrottle]
 
     def post(self, request):
         serializer = ChatMessageInputSerializer(data=request.data)
@@ -28,7 +31,6 @@ class ChatbotMessageView(APIView):
         property_id = data.get('property_id')
         session_id = data.get('session_id')
 
-        # --- Load or create chat session ---
         if session_id:
             session, _ = ChatSession.objects.get_or_create(
                 session_id=session_id,
@@ -37,7 +39,13 @@ class ChatbotMessageView(APIView):
         else:
             session = ChatSession.objects.create(property_id=property_id)
 
+        organization_id = (
+            Property.objects.filter(pk=property_id).values_list('organization_id', flat=True).first()
+            if property_id else None
+        ) or getattr(default_organization(), 'id', None)
+
         InboxMessage.objects.create(
+            organization_id=organization_id,
             channel='DIRECT',
             direction='INBOUND',
             sender=str(session.session_id),
@@ -46,7 +54,6 @@ class ChatbotMessageView(APIView):
             external_id=f'chat-{session.session_id}-{len(session.messages)}-in',
         )
 
-        # --- Build context: property info ---
         property_info = ''
         if property_id:
             try:
@@ -66,7 +73,6 @@ class ChatbotMessageView(APIView):
             except Property.DoesNotExist:
                 pass
 
-        # --- Build context: published FAQs ---
         faqs = FAQ.objects.filter(is_published=True).select_related('category').order_by('order')
         faq_list = '\n'.join(
             f"Q: {faq.question}\nA: {faq.answer}" for faq in faqs
@@ -91,7 +97,6 @@ class ChatbotMessageView(APIView):
             f"FREQUENTLY ASKED QUESTIONS:\n{faq_list or 'No FAQs available.'}"
         )
 
-        # --- Call Anthropic API ---
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         ai_response = client.messages.create(
             model='claude-haiku-4-5-20251001',
@@ -102,6 +107,7 @@ class ChatbotMessageView(APIView):
         reply = ai_response.content[0].text
 
         InboxMessage.objects.create(
+            organization_id=organization_id,
             channel='DIRECT',
             direction='OUTBOUND',
             sender='assistant',
@@ -111,7 +117,6 @@ class ChatbotMessageView(APIView):
             is_read=True,
         )
 
-        # --- Persist messages to session ---
         messages = list(session.messages)
         messages.append({'role': 'user', 'content': user_message})
         messages.append({'role': 'assistant', 'content': reply})
@@ -119,7 +124,7 @@ class ChatbotMessageView(APIView):
         session.save(update_fields=['messages'])
 
         return Response({
-            'reply': reply,  # Cambiado de 'response' a 'reply'
+            'reply': reply,
             'session_id': str(session.session_id),
         })
 

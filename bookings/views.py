@@ -25,6 +25,7 @@ class BookingViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     )
     serializer_class = BookingSerializer
     permission_classes = [IsAuthenticated]
+    organization_lookup = 'apartment__organization'
     owner_lookup = 'apartment__owner'
     pagination_class = BookingPagination
 

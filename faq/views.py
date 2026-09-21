@@ -18,7 +18,7 @@ class FAQViewSet(viewsets.ModelViewSet):
 
 
 class PublicFAQViewSet(viewsets.ReadOnlyModelViewSet):
-    """Public read-only endpoint — returns only published FAQs grouped by category."""
+    """FAQs publicadas, agrupadas por categoría."""
     queryset = FAQCategory.objects.prefetch_related('faqs').order_by('order')
     serializer_class = FAQCategorySerializer
     permission_classes = [AllowAny]

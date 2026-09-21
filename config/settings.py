@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import sys
 import shutil
 from pathlib import Path
 from datetime import timedelta
@@ -50,6 +51,7 @@ INSTALLED_APPS = [
     # Third-party
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
 
@@ -217,7 +219,7 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': False,
+    'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
@@ -242,6 +244,11 @@ CORS_ALLOW_CREDENTIALS = True
 if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
+    # Vercel termina el HTTPS en su proxy y reenvía este encabezado.
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'True') == 'True' and 'test' not in sys.argv
+    SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # ---------------------------------------------------------------------------
 # Anthropic
@@ -271,3 +278,26 @@ if os.environ.get('USE_S3_MEDIA', 'False') == 'True':
     STORAGES['default'] = {
         'BACKEND': 'storages.backends.s3.S3Storage',
     }
+
+# Secreto compartido con n8n para el webhook entrante (vacío = endpoint cerrado).
+N8N_INBOUND_SECRET = os.environ.get('N8N_INBOUND_SECRET', '')
+
+# URL pública del CRM, usada en los enlaces de pago.
+CRM_BASE_URL = os.environ.get('CRM_BASE_URL', 'http://127.0.0.1:5175').rstrip('/')
+
+# ---------------------------------------------------------------------------
+# Caché (la usan los límites de peticiones)
+# ---------------------------------------------------------------------------
+# En serverless cada instancia tiene su propia memoria, así que el límite solo
+# es fiable con una caché compartida: Redis si hay REDIS_URL, y si no la propia
+# base de datos (tabla creada con `createcachetable`).
+if os.environ.get('REDIS_URL'):
+    CACHES = {'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.environ['REDIS_URL'],
+    }}
+elif not USE_SQLITE:
+    CACHES = {'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+    }}

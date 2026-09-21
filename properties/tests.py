@@ -39,6 +39,30 @@ class PublicPropertyTests(TestCase):
         titles = [item['title'] for item in response.data['results']]
         self.assertEqual(titles, [published.title])
 
+    def test_public_metadata_accepts_legacy_lists_and_scalar_values(self):
+        property_obj = self.make_property('Metadatos compatibles', True)
+        property_obj.equipment = {
+            'city': ['Salamanca'],
+            'unit_number': '3A',
+            'price_1_month': ['1800.00'],
+            'province': [],
+            'postal_code': None,
+        }
+        property_obj.save()
+
+        response = APIClient().get(f'/api/public/properties/{property_obj.pk}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['city'], 'Salamanca')
+        self.assertEqual(response.data['unit_number'], '3A')
+        self.assertEqual(response.data['price_1_month'], '1800.00')
+        self.assertEqual(response.data['province'], '')
+        self.assertIsNone(response.data['postal_code'])
+        self.assertEqual(response.data['country'], 'España')
+        self.assertEqual(response.data['rental_type'], 'TEMPORADA')
+        self.assertEqual(response.data['orientation'], 'EXTERIOR')
+        self.assertEqual(response.data['housing_type'], 'PISO')
+
 
 class PropertyImageUploadTests(TestCase):
     def setUp(self):
@@ -226,3 +250,148 @@ class CRMPropertyPayloadTests(TestCase):
         self.assertEqual(property_obj.equipment['kitchen'], ['Microondas'])
         self.assertEqual(property_obj.equipment['price_1_month'], ['1800.00'])
         self.assertEqual(property_obj.equipment['owner_name'], ['Riestra'])
+
+    def test_admin_without_organization_can_edit_property(self):
+        property_obj = Property.objects.create(
+            organization=self.organization,
+            title='Apartamento administrado',
+            description='Ficha inicial.',
+            location='Salamanca',
+            price_per_night='120.00',
+            max_guests=2,
+        )
+        admin = User.objects.create_user(username='admin-no-org', role='ADMIN')
+        self.client.force_authenticate(admin)
+
+        response = self.client.patch(
+            f'/api/properties/{property_obj.pk}/',
+            {'title': 'Apartamento actualizado'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200, response.data)
+        property_obj.refresh_from_db()
+        self.assertEqual(property_obj.organization_id, self.organization.pk)
+        self.assertEqual(property_obj.title, 'Apartamento actualizado')
+
+
+class SecurityRegressionTests(TestCase):
+    """Cierra los fallos de acceso, precio, propiedad y cancelación."""
+
+    def setUp(self):
+        from datetime import date, timedelta
+        from django.core.cache import cache
+        cache.clear()  # los límites de peticiones se guardan en caché
+        self.today = date.today()
+        self.org = Organization.objects.create(name='Org A', contact_email='a@example.com')
+        self.other_org = Organization.objects.create(name='Org B', contact_email='b@example.com')
+        self.prop = Property.objects.create(
+            organization=self.org, title='Rua 141', description='x', location='Salamanca',
+            price_per_night='100.00', cleaning_fee='20.00', max_guests=2,
+            is_active=True, is_published=True,
+            equipment={'cup_number': ['X1'], 'owner_name': ['Juan'], 'kitchen': ['Horno']},
+        )
+        self.foreign = Property.objects.create(
+            organization=self.other_org, title='Ajeno', description='x', location='Madrid',
+            price_per_night='100.00', max_guests=2, is_active=True, is_published=True,
+        )
+        self.user = User.objects.create_user(username='u', password='p', organization=self.org)
+        self.check_in = self.today + timedelta(days=10)
+        self.check_out = self.today + timedelta(days=12)
+
+    def public_payload(self, **extra):
+        data = {
+            'property_id': self.prop.id, 'guest_name': 'Ana Gil', 'guest_email': 'ana@example.com',
+            'check_in': str(self.check_in), 'check_out': str(self.check_out), 'guests': 2,
+            'total': '1.00',
+        }
+        data.update(extra)
+        return data
+
+    def test_internal_catalog_requires_login(self):
+        self.assertEqual(APIClient().get('/api/properties/').status_code, 401)
+
+    def test_public_api_hides_internal_metadata(self):
+        data = APIClient().get(f'/api/public/properties/{self.prop.id}/').data
+        for key in ('cup_number', 'cadastral_reference', 'owner_name', 'bookings_count'):
+            self.assertNotIn(key, data)
+        self.assertNotIn('cup_number', data['equipment'])
+        self.assertNotIn('owner_name', data['equipment'])
+
+    def test_public_booking_ignores_client_price(self):
+        response = APIClient().post('/api/public-booking/', self.public_payload(), format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertEqual(str(response.data['total_price']), '220.00')
+
+    def test_public_booking_rejects_too_many_guests(self):
+        response = APIClient().post('/api/public-booking/', self.public_payload(guests=9), format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_cannot_book_foreign_apartment(self):
+        client = APIClient()
+        client.force_authenticate(self.user)
+        response = client.post('/api/bookings/', {
+            'apartment': self.foreign.id, 'check_in': str(self.check_in),
+            'check_out': str(self.check_out), 'total_price': '200.00', 'num_guests': 1,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_cancelling_releases_dates_and_income(self):
+        from accounting.models import Transaction
+        from bookings.models import Booking
+        from property_calendar.models import CalendarBlock
+        booking = Booking.objects.create(
+            apartment=self.prop, check_in=self.check_in, check_out=self.check_out,
+            total_price='200.00', status='CONFIRMED',
+        )
+        self.assertTrue(CalendarBlock.objects.filter(booking=booking).exists())
+        booking.status = 'CANCELLED'
+        booking.save()
+        self.assertFalse(CalendarBlock.objects.filter(booking=booking).exists())
+        self.assertFalse(Transaction.objects.filter(booking=booking, is_void=False).exists())
+        self.assertTrue(Transaction.objects.filter(booking=booking, is_void=True).exists())
+
+        booking.status = 'CONFIRMED'
+        booking.save()
+        self.assertEqual(Transaction.objects.filter(booking=booking, is_void=False).count(), 1)
+        self.assertFalse(Transaction.objects.filter(booking=booking, is_void=True).exists())
+
+    def test_contact_form_creates_inbox_message(self):
+        from integrations.models import InboxMessage
+        response = APIClient().post('/api/contact/', {
+            'name': 'Ana Gil', 'email': 'ana@example.com', 'guests': 2,
+            'check_in': str(self.check_in), 'check_out': str(self.check_out),
+            'message': 'Hola',
+        }, format='json')
+        self.assertEqual(response.status_code, 201, response.data)
+        msg = InboxMessage.objects.get()
+        self.assertEqual(msg.direction, 'INBOUND')
+        self.assertIn('ana@example.com', msg.sender)
+
+    def test_organization_isolation_and_roles(self):
+        from bookings.models import Booking
+        manager = User.objects.create_user(username='m', password='p', organization=self.org, role='MANAGER')
+        owner = User.objects.create_user(username='o', password='p', organization=self.org, role='OWNER')
+        client = APIClient()
+        client.force_authenticate(manager)
+        titles = [p['title'] for p in client.get('/api/properties/').data['results']]
+        self.assertEqual(titles, ['Rua 141'])
+        self.assertEqual(client.get(f'/api/properties/{self.foreign.id}/').status_code, 404)
+        foreign_booking = Booking.objects.create(
+            apartment=self.foreign, check_in=self.check_in, check_out=self.check_out, total_price='10')
+        self.assertEqual(client.get(f'/api/bookings/{foreign_booking.id}/').status_code, 404)
+        response = client.post('/api/channel-connections/', {
+            'property': self.foreign.id, 'channel': 'AIRBNB', 'external_listing_id': 'x'}, format='json')
+        self.assertEqual(response.status_code, 403, response.data)
+        client.force_authenticate(owner)
+        self.assertEqual(client.get('/api/inbox-messages/').status_code, 403)
+        self.assertEqual(client.post('/api/amenities/', {'name': 'Piscina'}, format='json').status_code, 403)
+
+    def test_n8n_webhook_requires_secret(self):
+        from django.test import override_settings
+        client = APIClient()
+        self.assertEqual(client.post('/api/integrations/n8n/inbound/', {}, format='json').status_code, 403)
+        with override_settings(N8N_INBOUND_SECRET='s3cret'):
+            self.assertEqual(client.post('/api/integrations/n8n/inbound/', {}, format='json').status_code, 403)
+            ok = client.post('/api/integrations/n8n/inbound/', {}, format='json', HTTP_X_APARTMENTS_SECRET='s3cret')
+            self.assertEqual(ok.status_code, 200)

@@ -66,6 +66,20 @@ def normalize_equipment_value(value):
     return [value]
 
 
+class EquipmentValueField(serializers.ReadOnlyField):
+    """Lee metadatos del CRM guardados como listas o valores simples."""
+
+    def __init__(self, key, default=''):
+        self.equipment_key = key
+        self.equipment_default = default
+        super().__init__(source='*')
+
+    def to_representation(self, property_obj):
+        return first_equipment_value(
+            property_obj.equipment, self.equipment_key, self.equipment_default,
+        )
+
+
 class AmenitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Amenity
@@ -90,30 +104,30 @@ class PropertySerializer(serializers.ModelSerializer):
     bookings_count = serializers.SerializerMethodField(read_only=True)
     images = PropertyImageSerializer(many=True, required=False)
     amenity_details = AmenitySerializer(source='amenities', many=True, read_only=True)
-    unit_number = serializers.SerializerMethodField()
-    city = serializers.SerializerMethodField()
-    postal_code = serializers.SerializerMethodField()
-    province = serializers.SerializerMethodField()
-    country = serializers.SerializerMethodField()
-    price_15_days = serializers.SerializerMethodField()
-    price_1_month = serializers.SerializerMethodField()
-    price_2_months = serializers.SerializerMethodField()
-    price_3_5_months = serializers.SerializerMethodField()
-    price_6_months = serializers.SerializerMethodField()
+    unit_number = EquipmentValueField('unit_number')
+    city = EquipmentValueField('city')
+    postal_code = EquipmentValueField('postal_code')
+    province = EquipmentValueField('province')
+    country = EquipmentValueField('country', 'España')
+    price_15_days = EquipmentValueField('price_15_days')
+    price_1_month = EquipmentValueField('price_1_month')
+    price_2_months = EquipmentValueField('price_2_months')
+    price_3_5_months = EquipmentValueField('price_3_5_months')
+    price_6_months = EquipmentValueField('price_6_months')
     long_stay_discount_enabled = serializers.SerializerMethodField()
-    long_stay_discount_percent = serializers.SerializerMethodField()
+    long_stay_discount_percent = EquipmentValueField('long_stay_discount_percent')
     last_minute_discount_enabled = serializers.SerializerMethodField()
-    last_minute_discount_percent = serializers.SerializerMethodField()
-    cup_number = serializers.SerializerMethodField()
-    property_registry_number = serializers.SerializerMethodField()
-    cadastral_reference = serializers.SerializerMethodField()
-    owner_name = serializers.SerializerMethodField()
-    rental_type = serializers.SerializerMethodField()
-    orientation = serializers.SerializerMethodField()
-    viewpoint = serializers.SerializerMethodField()
-    windows = serializers.SerializerMethodField()
-    housing_type = serializers.SerializerMethodField()
-    public_url = serializers.SerializerMethodField()
+    last_minute_discount_percent = EquipmentValueField('last_minute_discount_percent')
+    cup_number = EquipmentValueField('cup_number')
+    property_registry_number = EquipmentValueField('property_registry_number')
+    cadastral_reference = EquipmentValueField('cadastral_reference')
+    owner_name = EquipmentValueField('owner_name')
+    rental_type = EquipmentValueField('rental_type', 'TEMPORADA')
+    orientation = EquipmentValueField('orientation', 'EXTERIOR')
+    viewpoint = EquipmentValueField('viewpoint')
+    windows = EquipmentValueField('windows')
+    housing_type = EquipmentValueField('housing_type', 'PISO')
+    public_url = EquipmentValueField('public_url')
     video_url = serializers.SerializerMethodField()
     virtual_tour_url = serializers.SerializerMethodField()
     virtual_tour_2_url = serializers.SerializerMethodField()
@@ -136,77 +150,11 @@ class PropertySerializer(serializers.ModelSerializer):
     def get_bookings_count(self, obj):
         return obj.bookings.count()
 
-    def get_unit_number(self, obj):
-        return first_equipment_value(obj.equipment, 'unit_number')
-
-    def get_city(self, obj):
-        return first_equipment_value(obj.equipment, 'city')
-
-    def get_postal_code(self, obj):
-        return first_equipment_value(obj.equipment, 'postal_code')
-
-    def get_province(self, obj):
-        return first_equipment_value(obj.equipment, 'province')
-
-    def get_country(self, obj):
-        return first_equipment_value(obj.equipment, 'country', 'España')
-
-    def get_price_15_days(self, obj):
-        return first_equipment_value(obj.equipment, 'price_15_days')
-
-    def get_price_1_month(self, obj):
-        return first_equipment_value(obj.equipment, 'price_1_month')
-
-    def get_price_2_months(self, obj):
-        return first_equipment_value(obj.equipment, 'price_2_months')
-
-    def get_price_3_5_months(self, obj):
-        return first_equipment_value(obj.equipment, 'price_3_5_months')
-
-    def get_price_6_months(self, obj):
-        return first_equipment_value(obj.equipment, 'price_6_months')
-
     def get_long_stay_discount_enabled(self, obj):
         return bool(first_equipment_value(obj.equipment, 'long_stay_discount_enabled', False))
 
-    def get_long_stay_discount_percent(self, obj):
-        return first_equipment_value(obj.equipment, 'long_stay_discount_percent')
-
     def get_last_minute_discount_enabled(self, obj):
         return bool(first_equipment_value(obj.equipment, 'last_minute_discount_enabled', False))
-
-    def get_last_minute_discount_percent(self, obj):
-        return first_equipment_value(obj.equipment, 'last_minute_discount_percent')
-
-    def get_cup_number(self, obj):
-        return first_equipment_value(obj.equipment, 'cup_number')
-
-    def get_property_registry_number(self, obj):
-        return first_equipment_value(obj.equipment, 'property_registry_number')
-
-    def get_cadastral_reference(self, obj):
-        return first_equipment_value(obj.equipment, 'cadastral_reference')
-
-    def get_owner_name(self, obj):
-        return first_equipment_value(obj.equipment, 'owner_name')
-
-    def get_rental_type(self, obj):
-        return first_equipment_value(obj.equipment, 'rental_type', 'TEMPORADA')
-
-    def get_orientation(self, obj):
-        return first_equipment_value(obj.equipment, 'orientation', 'EXTERIOR')
-
-    def get_viewpoint(self, obj):
-        return first_equipment_value(obj.equipment, 'viewpoint')
-
-    def get_windows(self, obj):
-        return first_equipment_value(obj.equipment, 'windows')
-
-    def get_housing_type(self, obj):
-        return first_equipment_value(obj.equipment, 'housing_type', 'PISO')
-
-    def get_public_url(self, obj):
-        return first_equipment_value(obj.equipment, 'public_url')
 
     def get_video_url(self, obj):
         return first_equipment_value(obj.equipment, 'video_url') or first_equipment_value(obj.equipment, 'video')
@@ -315,8 +263,12 @@ class PropertySerializer(serializers.ModelSerializer):
         property_obj.images.exclude(id__in=kept_ids).delete()
 
 
+# Datos del CRM que viven dentro del JSON `equipment` y no deben salir a la web.
+INTERNAL_EQUIPMENT_KEYS = ('cup_number', 'cadastral_reference', 'property_registry_number', 'owner_name')
+
+
 class PublicPropertySerializer(PropertySerializer):
-    """Lean serializer for public landing page — no sensitive org data."""
+    """Versión pública para la landing: sin datos internos ni de la organización."""
 
     class Meta:
         model = Property
@@ -329,14 +281,21 @@ class PublicPropertySerializer(PropertySerializer):
             'long_stay_discount_enabled', 'long_stay_discount_percent',
             'last_minute_discount_enabled', 'last_minute_discount_percent',
             'check_in_time', 'check_out_time', 'min_nights', 'rules',
-            'tourist_registration_number', 'cup_number',
-            'property_registry_number', 'cadastral_reference', 'owner_name',
+            'tourist_registration_number',
             'rental_type', 'orientation', 'viewpoint', 'windows',
             'housing_type', 'public_url', 'size_m2', 'floor',
             'construction_year', 'renovation_year', 'distribution',
             'beds', 'equipment', 'warnings',
             'video_url', 'virtual_tour_url', 'virtual_tour_2_url',
             'other_resources', 'chat_url', 'resources',
-            'amenity_details', 'images', 'bookings_count',
+            'amenity_details', 'images',
             'is_active', 'is_published',
         )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['equipment'] = {
+            key: value for key, value in (data.get('equipment') or {}).items()
+            if key not in INTERNAL_EQUIPMENT_KEYS
+        }
+        return data

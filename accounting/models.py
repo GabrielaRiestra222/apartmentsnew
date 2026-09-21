@@ -27,6 +27,8 @@ class Transaction(models.Model):
     date = models.DateField()
     description = models.TextField(blank=True)
     receipt_url = models.CharField(max_length=1000, blank=True)
+    # Las reservas canceladas anulan sus movimientos en vez de borrarlos, para conservar el histórico.
+    is_void = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

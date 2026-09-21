@@ -12,6 +12,13 @@ class TeamMember(models.Model):
     first_name = models.CharField(max_length=150)
     last_name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='team_members',
+    )
     phone = models.CharField(max_length=20)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     is_active = models.BooleanField(default=True)

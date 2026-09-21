@@ -1,3 +1,4 @@
+from common.permissions import OwnerScopedQuerysetMixin
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
@@ -11,10 +12,13 @@ class CalendarBlockPagination(PageNumberPagination):
     max_page_size = 1000
 
 
-class CalendarBlockViewSet(viewsets.ModelViewSet):
+class CalendarBlockViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = CalendarBlock.objects.select_related('property', 'booking').order_by('start_date')
     serializer_class = CalendarBlockSerializer
     permission_classes = [IsAuthenticated]
+    owner_lookup = 'property__owner'
+    organization_lookup = 'property__organization'
+    organization_check = 'property.organization_id'
     pagination_class = CalendarBlockPagination
 
     def get_queryset(self):

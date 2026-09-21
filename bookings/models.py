@@ -11,7 +11,6 @@ class Booking(models.Model):
         ('CANCELLED', 'Cancelled'),
     )
 
-    # 🔹 NO usamos "property" como nombre de campo
     apartment = models.ForeignKey(
         'properties.Property',
         on_delete=models.CASCADE,
@@ -71,16 +70,11 @@ class Booking(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # -----------------------------
-    # VALIDACIONES
-    # -----------------------------
     def clean(self):
 
-        # Check-out posterior
         if self.check_out <= self.check_in:
             raise ValidationError("Check-out must be after check-in.")
 
-        # Evitar solapamientos
         overlapping = Booking.objects.filter(
             apartment=self.apartment,
             status__in=['PENDING', 'CONFIRMED'],
@@ -91,9 +85,6 @@ class Booking(models.Model):
         if overlapping.exists():
             raise ValidationError("This apartment is already booked for these dates.")
 
-    # -----------------------------
-    # PROPIEDADES FINANCIERAS
-    # -----------------------------
     @property
     def total_paid(self):
         return sum(

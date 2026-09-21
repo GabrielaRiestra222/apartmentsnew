@@ -6,7 +6,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from common.permissions import IsAuthenticatedOrReadOnlyForProperties, OwnerScopedQuerysetMixin
+from rest_framework.permissions import SAFE_METHODS
+
+from common.permissions import IsStaffRole, OwnerScopedQuerysetMixin
 from .models import Property, Amenity, PropertyImage
 from .serializers import PropertySerializer, PublicPropertySerializer, AmenitySerializer, PropertyImageSerializer
 
@@ -19,40 +21,26 @@ class PropertyViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
         .order_by('title')
     )
     serializer_class = PropertySerializer
-    permission_classes = [IsAuthenticatedOrReadOnlyForProperties]
+    permission_classes = [IsAuthenticated]
     owner_lookup = 'owner'
+    organization_lookup = 'organization'
 
     def perform_create(self, serializer):
-        """
-        Auto-assign organization from the logged-in user. Admins/superusers
-        commonly have no organization of their own (they manage everything),
-        so fall back to the first organization on record rather than trying
-        to insert a NULL into a NOT NULL column.
-        """
+        # Los administradores sin organización usan la primera disponible.
         organization = self.request.user.organization
         if organization is None:
             from organizations.models import Organization
             organization = Organization.objects.order_by('id').first()
         serializer.save(organization=organization)
 
-    def perform_update(self, serializer):
-        """
-        Leave organization untouched on update. It used to be overwritten
-        with the editing user's own organization on every save — for any
-        user without one (e.g. an admin), that meant NULL, which violates
-        the NOT NULL constraint and made every property edit fail with a
-        500 as soon as the user saved.
-        """
-        serializer.save()
-
     @action(detail=False, methods=['post'], url_path='upload-image', permission_classes=[IsAuthenticated])
     def upload_image(self, request):
-        """Upload an image file and return the public media URL."""
+        """Sube una imagen y devuelve su URL pública."""
         return handle_property_image_upload(request)
 
     @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
     def calendar(self, request, pk=None):
-        """Return all calendar blocks for a specific property."""
+        """Bloqueos de calendario de esta propiedad."""
         from property_calendar.serializers import CalendarBlockSerializer
         prop = self.get_object()
         blocks = prop.calendar_blocks.select_related('booking').order_by('start_date')
@@ -65,7 +53,7 @@ class PublicPropertyViewSet(
     mixins.RetrieveModelMixin,
     GenericViewSet,
 ):
-    """Read-only, unauthenticated — only published properties."""
+    """Catálogo público: solo lectura y solo propiedades publicadas."""
     queryset = (
         Property.objects
         .filter(is_published=True, is_active=True)
@@ -79,13 +67,21 @@ class PublicPropertyViewSet(
 class AmenityViewSet(viewsets.ModelViewSet):
     queryset = Amenity.objects.all().order_by('name')
     serializer_class = AmenitySerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        # Los amenities son compartidos: cualquiera con sesión los lee, solo el staff los edita.
+        if self.request.method in SAFE_METHODS:
+            return [IsAuthenticated()]
+        return [IsStaffRole()]
 
 
-class PropertyImageViewSet(viewsets.ModelViewSet):
+class PropertyImageViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = PropertyImage.objects.select_related('property').order_by('property', 'order')
     serializer_class = PropertyImageSerializer
     permission_classes = [IsAuthenticated]
+    owner_lookup = 'property__owner'
+    organization_lookup = 'property__organization'
+    organization_check = 'property.organization_id'
 
 
 @api_view(['POST'])

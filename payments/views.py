@@ -10,5 +10,6 @@ class BookingPaymentViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = BookingPayment.objects.select_related('booking', 'booking__apartment').order_by('-due_date')
     serializer_class = BookingPaymentSerializer
     permission_classes = [IsAuthenticated]
+    organization_lookup = 'booking__apartment__organization'
     owner_lookup = 'booking__apartment__owner'
     filterset_fields = ['status', 'booking']

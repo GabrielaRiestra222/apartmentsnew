@@ -5,6 +5,13 @@ class Agency(models.Model):
     name = models.CharField(max_length=255)
     contact_name = models.CharField(max_length=255, blank=True)
     email = models.EmailField(blank=True)
+    organization = models.ForeignKey(
+        'organizations.Organization',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name='agencies',
+    )
     phone = models.CharField(max_length=20, blank=True)
     commission_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)
     contract_start = models.DateField(null=True, blank=True)

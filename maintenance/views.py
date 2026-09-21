@@ -10,6 +10,7 @@ class MaintenanceRequestViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet)
     queryset = MaintenanceRequest.objects.select_related('property', 'assigned_to').order_by('-reported_at')
     serializer_class = MaintenanceRequestSerializer
     permission_classes = [IsAuthenticated]
+    organization_lookup = 'property__organization'
     owner_lookup = 'property__owner'
 
     def get_queryset(self):

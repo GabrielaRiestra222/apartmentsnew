@@ -26,6 +26,8 @@ def run_migrations_and_sync_admin():
     token-protected /api/system/bootstrap/ endpoint, never automatically.
     """
     call_command('migrate', interactive=False, verbosity=0)
+    # Tabla de la caché compartida que usan los límites de peticiones (no hace nada si ya existe).
+    call_command('createcachetable', verbosity=0)
     ensure_default_admin()
     ensure_qa_user()
 

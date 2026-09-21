@@ -10,6 +10,7 @@ class CleaningTaskViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
     queryset = CleaningTask.objects.select_related('property', 'booking').order_by('scheduled_date')
     serializer_class = CleaningTaskSerializer
     permission_classes = [IsAuthenticated]
+    organization_lookup = 'property__organization'
     owner_lookup = 'property__owner'
 
     def get_queryset(self):

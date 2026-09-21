@@ -1,3 +1,4 @@
+import hmac
 import calendar as cal
 import os
 from datetime import date
@@ -9,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounting.models import Transaction
+from common.permissions import sees_all_organizations
 from bookings.models import Booking
 from cleaning.models import CleaningTask
 from maintenance.models import MaintenanceRequest
@@ -33,11 +35,20 @@ class DashboardStatsView(APIView):
             and getattr(request.user, 'role', None) == 'OWNER'
         )
 
-        transactions = Transaction.objects.all()
+        transactions = Transaction.objects.filter(is_void=False)
         bookings = Booking.objects.all()
         cleaning_tasks = CleaningTask.objects.all()
         maintenance_requests = MaintenanceRequest.objects.all()
         properties = Property.objects.all()
+
+        user = request.user
+        if not sees_all_organizations(user):
+            org = user.organization_id
+            transactions = transactions.filter(property__organization_id=org)
+            bookings = bookings.filter(apartment__organization_id=org)
+            cleaning_tasks = cleaning_tasks.filter(property__organization_id=org)
+            maintenance_requests = maintenance_requests.filter(property__organization_id=org)
+            properties = properties.filter(organization_id=org)
 
         if is_owner:
             transactions = transactions.filter(property__owner=request.user)
@@ -137,7 +148,7 @@ class SystemBootstrapView(APIView):
         expected_token = os.environ.get('BOOTSTRAP_TOKEN')
         provided_token = request.headers.get('X-Bootstrap-Token')
 
-        if not expected_token or provided_token != expected_token:
+        if not expected_token or not hmac.compare_digest(provided_token or '', expected_token):
             return Response({'detail': 'Not found.'}, status=404)
 
         from common.bootstrap import run_migrations_and_sync_admin

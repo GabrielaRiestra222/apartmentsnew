@@ -6,4 +6,4 @@ class AgencySerializer(serializers.ModelSerializer):
     class Meta:
         model = Agency
         fields = '__all__'
-        read_only_fields = ('created_at',)
+        read_only_fields = ('created_at', 'organization')

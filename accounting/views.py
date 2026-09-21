@@ -7,7 +7,8 @@ from .serializers import TransactionSerializer
 
 
 class TransactionViewSet(OwnerScopedQuerysetMixin, viewsets.ModelViewSet):
-    queryset = Transaction.objects.select_related('property', 'booking').order_by('-date')
+    queryset = Transaction.objects.filter(is_void=False).select_related('property', 'booking').order_by('-date')
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
+    organization_lookup = 'property__organization'
     owner_lookup = 'property__owner'

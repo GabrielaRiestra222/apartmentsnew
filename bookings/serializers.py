@@ -67,9 +67,20 @@ class BookingSerializer(serializers.ModelSerializer):
             'deposit_returned', 'deposit_returned_at',
         )
 
+    def _check_apartment_access(self, apartment):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if apartment is None or user is None or user.is_superuser:
+            return
+        if user.organization_id != apartment.organization_id:
+            raise DRFValidationError({'apartment': 'Apartment not found.'})
+        if getattr(user, 'role', None) == 'OWNER' and apartment.owner_id != user.id:
+            raise DRFValidationError({'apartment': 'Apartment not found.'})
+
     def validate(self, attrs):
         # Build a temporary instance to run model-level clean()
         instance = self.instance
+        self._check_apartment_access(attrs.get('apartment'))
         booking = Booking(
             apartment=attrs.get('apartment', getattr(instance, 'apartment', None)),
             client=attrs.get('client', getattr(instance, 'client', None)),
